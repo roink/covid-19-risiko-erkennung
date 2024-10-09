@@ -33,3 +33,30 @@ Analyse und Modellierung von Covid-19 Risikofaktoren im Rahmen des Projektprakti
 
 --------
 
+## Setup
+
+### Cloning the Repository
+
+Download the repository using git:
+
+```bash
+git clone <repository-url>
+cd covid-19-risiko-erkennung
+```
+
+### Setting Up the Virtual Environment
+
+Set up and activate the virtual environment:
+```bash
+# Run the setup script to create the virtual environment
+src/setup_venv.sh
+
+# Activate the virtual environment
+source venv/bin/activate
+```
+### Kaggle Data Access
+
+To access data from Kaggle, authenticate your Kaggle account:
+
+1. Go to your Kaggle account settings and create a new API token. This will download a kaggle.json file with your credentials.
+2. Place the kaggle.json file in the ~/.kaggle/ directory on your system.
