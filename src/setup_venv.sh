@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Check if Python 3.10 is installed
-if ! command -v python3.10 &> /dev/null; then
-    echo "Python 3.10 is not installed. Please install it and try again."
+# Check if any Python 3 version is installed
+if ! command -v python3 &> /dev/null; then
+    echo "Python 3 is not installed. Please install it and try again."
     exit 1
 fi
 
-# Check if python3.10-venv package is installed
-if ! dpkg -s python3.10-venv &> /dev/null; then
-    echo "The python3.10-venv package is not installed."
-    echo "Please install it by running: sudo apt install python3.10-venv"
+# Check if the venv package is installed
+if ! python3 -m venv --help &> /dev/null; then
+    echo "The python3-venv package is not installed."
+    echo "Please install it by running: sudo apt install python3-venv"
     exit 1
 fi
 
