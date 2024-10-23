@@ -197,6 +197,7 @@ _Secondary Considerations_ \
 # Intermediate results
 
 ## R
+
 * https://kjhealy.github.io/covdata/articles/covdata.html
 * https://cran.r-project.org/web/packages/covid19.analytics/vignettes/covid19.analytics.html
 * http://www.repidemicsconsortium.org/
@@ -206,20 +207,25 @@ _Secondary Considerations_ \
 * https://github.com/joachim-gassen/tidycovid19
 
 ## Python
+
 * https://github.com/alvarobartt/covid-daily
 
 
 ## Genome
+
 * https://github.com/albertotonda/deep-learning-coronavirus-genome/tree/master
 * https://www.kaggle.com/code/mlconsult/covid-19-genome-variations/notebook
 
 ## XRay
+
 * https://github.com/ieee8023/covid-chestxray-dataset
 
 ## Literature
+
 * https://pmc.ncbi.nlm.nih.gov/articles/PMC8083224/
 
 ## other
+
 * https://www.covid19dataportal.org/
 * https://researchguides.library.tufts.edu/c.php?g=905212&p=8319620
 * https://aimi.stanford.edu/covid-19-testing-page#data
@@ -241,11 +247,13 @@ CDC
     * https://data.cdc.gov/Case-Surveillance/COVID-19-Case-Surveillance-Public-Use-Data-with-Ge/n8mc-b4w4/data
 
 ### Google
+
 * https://datasetsearch.research.google.com/search?query=coronavirus+covid-19&docid=L2cvMTFranE1eXFrOQ%3D%3D
 * https://health.google.com/covid-19/open-data/raw-data
 * https://github.com/GoogleCloudPlatform/covid-19-open-data/blob/main/docs/table-search-trends.md
 
 ## Survey, Public statistics
+
 * https://www.health.govt.nz/statistics-research/surveys/access-to-survey-microdata
 * https://www.data.gv.at/daten/covid-19/
 * https://www.pathogens.se/datasets/public-health/
@@ -257,6 +265,7 @@ CDC
 ## CDC: COVID-19 Case Surveillance Public Use Data with Geography
 
 **Basic Information**
+
 * Title/Name: COVID-19 Case Surveillance Public Use Data with Geography
 * URL/URI: https://data.cdc.gov/Case-Surveillance/COVID-19-Case-Surveillance-Public-Use-Data-with-Geo/n8mc-b4w4
 * Rating (0-5): 5
@@ -267,12 +276,14 @@ CDC
 Comprehensive individual-level COVID-19 case surveillance data reported to CDC by U.S. states and territories. Contains 19 key data elements including demographics, geography, exposure history, disease severity indicators, outcomes, and underlying conditions.
 
 **Content**
+
 * Key variables: Case month, location (state/county), demographics, disease severity, outcomes, exposure history, underlying conditions
 * Sample size: 106 million records
 * Time period: January 2020 - July 5, 2024
 * Geographic coverage: United States (state and county level)
 
 **Technical Details**
+
 * Format: Structured dataset
 * Access method: Direct download or API access through data.cdc.gov
 * License: Public Domain U.S. Government
@@ -282,23 +293,27 @@ Comprehensive individual-level COVID-19 case surveillance data reported to CDC b
 **Quality Assessment**
 
 _Primary Criteria_
+
 * Completeness: High - covers all U.S. jurisdictions
 * Accuracy: High - follows standardized case definitions and reporting protocols
 * Timeliness: Monthly updates with 14-day reporting lag
 * Documentation: Excellent - detailed metadata and methodological documentation
 
 _Secondary Considerations_
+
 * Data suppression for privacy protection
 * Dynamic nature of case reporting with possible updates to historical data
 * Variable reporting compliance across jurisdictions
 
 **Potential Applications**
+
 * Epidemiological analysis of COVID-19 patterns and trends
 * Health equity research examining demographic disparities
 * Public health response evaluation and planning
 * Integration with other health and socioeconomic datasets
 
 **Additional Notes**
+
 * Limitations:
   - Reporting discontinued after July 1, 2024
   - Some jurisdictions stopped reporting after May 2023
@@ -311,10 +326,78 @@ _Secondary Considerations_
   - Regular quality assurance procedures applied by CDC
 
 
+## Google COVID-19 Search Trends Symptoms Dataset
+
+**Basic Information**
+* Title/Name: COVID-19 Search Trends Symptoms Dataset
+* URL/URI: 
+  - https://console.cloud.google.com/marketplace/product/bigquery-public-datasets/covid19-search-trends
+  - https://github.com/GoogleCloudPlatform/covid-19-open-data/blob/main/docs/table-search-trends.md
+* Rating (0-5): 4
+* Categories: Search Trends, Symptom Surveillance
+* Last Updated: Feb 24, 2021 (dataset ended)
+
+**Description**
+Aggregated, anonymized trends in Google searches for health symptoms, signs, and conditions, providing daily or weekly time series showing relative search volumes by region. Dataset is privacy-protected using differential privacy techniques.
+
+**Content**
+
+* Key variables: Region, date, normalized search volumes for various symptoms
+* Sample size: Coverage of Google Search users in included regions
+* Time period: 2020-2021 (ended Feb 2021)
+* Geographic coverage: Initially US, later expanded to Australia, Ireland, New Zealand, Singapore, and UK
+
+**Technical Details**
+
+* Format: BigQuery tables, CSV files
+* Access method: Google BigQuery, direct CSV download
+* License: Google Terms of Service
+* Documentation quality: Excellent - comprehensive methodology documentation
+* Relationships: Part of Google's COVID-19 Public Dataset Program, related to COVID-19 Open-Data repository
+
+**Quality Assessment**
+
+_Primary Criteria_
+
+* Completeness: High within covered regions
+* Accuracy: Uses differential privacy, normalized data
+* Timeliness: Was updated weekly (now discontinued)
+* Consistency: Standardized processing across regions
+
+_Secondary Considerations_
+
+* Privacy-preserving noise addition
+* Multiple temporal resolutions (daily/weekly)
+* Region-specific scaling factors
+* Multi-language support within regions
+
+**Potential Applications**
+
+* Early detection of COVID-19 outbreaks
+* Public health surveillance
+* Behavioral response analysis
+* Integration with clinical data for validation
+
+**Additional Notes**
+
+* Limitations:
+  - Dataset discontinued
+  - Cannot compare across regions
+  - Represents only Google Search users
+  - Added noise for privacy protection
+
+* Special considerations:
+  - Different scaling factors by region
+  - Weekly values available in two forms (direct and aggregated from daily)
+  - Search queries can map to multiple symptoms
+  - Not intended for medical diagnosis or personal guidance
+
+
 
 ## Title/Name
 
 **Basic Information**
+
 * Title/Name: 
 * URL/URI:
 * Rating (0-5): 5
@@ -326,12 +409,14 @@ _Secondary Considerations_
 Brief description of the resource...
 
 **Content**
+
 * Key variables:
 * Sample size:
 * Time period:
 * Geographic coverage:
 
 **Technical Details**
+
 * Format:
 * Access method:
 * License:
@@ -347,11 +432,13 @@ _Secondary Considerations_ \
 [List ratings/comments for each secondary criterion]
 
 **Potential Applications**
+
 * Use case 1:
 * Use case 2:
 * Integration notes:
 
 **Additional Notes**
+
 * Limitations:
 * Special considerations:
 
