@@ -103,11 +103,15 @@ The search for complementary datasets follows an iterative approach, ranging fro
 
 Initial searches combine Covid-19 related terms (e.g., "SARS-CoV-2", "COVID-19", "coronavirus") with specific data types and domains as outlined in the categorization (e.g., "epidemiology", "clinical", "case-level", "genetic", "genome"). Furthermore, terms from the reference dataset (e.g., "Mexico") are considered. Resources that have been active since 2020 and are still or at least recently maintained or concluded with a complete dataset are the main focus. The search includes both general-purpose platforms (like Kaggle, GitHub, Google Dataset Search, Zenodo) and specialized repositories (medical, epidemiological databases, national health institutes).
 
-[TODO] Die Suche und Dokumentation der Ressourcen wird in mehreren Schritten durchgeführt. Im ersten Anlauf wird die genannte Strategie zur schnellen Exploration des möglichen Ergebnisraums durchgeführt. Die Ergebnisse werden noch nicht ausführlich (mit "Data Resource Card"s) dokumentiert sondern liegen vielmehr als Linksammlung vor. Darauf aufbauend wird/wurde die Strategie weiter spezifiziert und die angeführten Kategorisierungen erstellt. Im zweiten Schritt werden die gefundenen Ressourcen grob sortiert und auf Relevanz und potentieller Verwertbarkeit beurteilt. Die resultierende Liste wird im Abschnitt "Zwischenergebnisse" aufgelistet. Im dritten Schritt werden die vielversprechensten Ressourcen in Form von "Data Resource Cards" exemplarisch dokumentiert.
+The search and documentation process is conducted in multiple phases:
+
+1. Initial exploration following the described strategy to quickly scan the possible solution space. Results are collected as a simple link collection rather than detailed documentation with "Data Resource Cards".
+2. Based on these findings, the strategy is further specified and the presented categorization is developed. The discovered resources are roughly sorted and evaluated regarding their relevance and potential utility. The resulting list is presented in the "Interim Results" section.
+3. Finally, the most promising resources are documented exemplarily using "Data Resource Cards".
 
 For a more comprehensive or systematic approach, methods related to structured literature reviews in the domain of Health Technology Assessments (HTA) would be highly advisable. The clear definition of search terms, inclusion and exclusion criteria, and structured frameworks like PICO (Population, Intervention, Comparison, Outcome) would facilitate a more systematic and professional approach.
 
-[TODO] the following aspects would need to be discussed in more detail:
+The following aspects require further specification for a more systematic approach:
 
 * Search methodology and detailed documentation of search paths
 * Systematic combinations of search terms
@@ -118,7 +122,7 @@ For a more comprehensive or systematic approach, methods related to structured l
 
 ### Project Context
 
-ToDo?
+[ToDo]?
 
 * Brief description of the primary dataset
 * Current modeling approach
@@ -196,19 +200,15 @@ _Secondary Considerations_ \
 
 # Intermediate results
 
-## R
+## Kaggle
 
-* https://kjhealy.github.io/covdata/articles/covdata.html
-* https://cran.r-project.org/web/packages/covid19.analytics/vignettes/covid19.analytics.html
-* http://www.repidemicsconsortium.org/
-* https://covid19datahub.io/index.html
-* https://rviews.rstudio.com/2021/12/08/the-r-package-covid19/
-* https://mine-cetinkaya-rundel.github.io/covid19-r/
-* https://github.com/joachim-gassen/tidycovid19
-
-## Python
-
-* https://github.com/alvarobartt/covid-daily
+* https://www.kaggle.com/datasets?tags=16575-Coronavirus
+  * https://www.kaggle.com/datasets/allen-institute-for-ai/CORD-19-research-challenge
+  * https://www.kaggle.com/datasets/arashnic/covid19-case-surveillance-public-use-dataset/code \
+  --> CDC
+  * https://www.kaggle.com/datasets/tawsifurrahman/covid19-radiography-database
+  * https://www.kaggle.com/datasets/pushkar007/covid-deeppredictor
+  * https://www.kaggle.com/datasets/josetroyatoscano/covid19-colombia-complete-dataset-dec-2023
 
 
 ## Genome
@@ -258,6 +258,20 @@ CDC
 * https://www.data.gv.at/daten/covid-19/
 * https://www.pathogens.se/datasets/public-health/
 * https://covid19ireland-geohive.hub.arcgis.com/
+
+## R
+
+* https://kjhealy.github.io/covdata/articles/covdata.html
+* https://cran.r-project.org/web/packages/covid19.analytics/vignettes/covid19.analytics.html
+* http://www.repidemicsconsortium.org/
+* https://covid19datahub.io/index.html
+* https://rviews.rstudio.com/2021/12/08/the-r-package-covid19/
+* https://mine-cetinkaya-rundel.github.io/covid19-r/
+* https://github.com/joachim-gassen/tidycovid19
+
+## Python
+
+* https://github.com/alvarobartt/covid-daily
 
 
 # Data Resource Cards
@@ -324,6 +338,10 @@ _Secondary Considerations_
   - Data are provisional and subject to updates
   - Privacy protections affect certain demographic combinations
   - Regular quality assurance procedures applied by CDC
+
+**References**
+
+* similar datasets (without Geography) available at kaggle ([Covid-19 Case Surveillance Public Use Dataset](https://www.kaggle.com/datasets/arashnic/covid19-case-surveillance-public-use-dataset/data]))
 
 
 ## Google COVID-19 Search Trends Symptoms Dataset
