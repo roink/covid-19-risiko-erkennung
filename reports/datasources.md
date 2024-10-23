@@ -251,3 +251,108 @@ CDC
 * https://www.pathogens.se/datasets/public-health/
 * https://covid19ireland-geohive.hub.arcgis.com/
 
+
+# Data Resource Cards
+
+## CDC: COVID-19 Case Surveillance Public Use Data with Geography
+
+**Basic Information**
+* Title/Name: COVID-19 Case Surveillance Public Use Data with Geography
+* URL/URI: https://data.cdc.gov/Case-Surveillance/COVID-19-Case-Surveillance-Public-Use-Data-with-Geo/n8mc-b4w4
+* Rating (0-5): 5
+* Categories: Case Surveillance, Public Health
+* Last Updated: July 9, 2024 (Data), July 17, 2024 (Metadata)
+
+**Description**
+Comprehensive individual-level COVID-19 case surveillance data reported to CDC by U.S. states and territories. Contains 19 key data elements including demographics, geography, exposure history, disease severity indicators, outcomes, and underlying conditions.
+
+**Content**
+* Key variables: Case month, location (state/county), demographics, disease severity, outcomes, exposure history, underlying conditions
+* Sample size: 106 million records
+* Time period: January 2020 - July 5, 2024
+* Geographic coverage: United States (state and county level)
+
+**Technical Details**
+* Format: Structured dataset
+* Access method: Direct download or API access through data.cdc.gov
+* License: Public Domain U.S. Government
+* Documentation quality: Excellent - comprehensive data dictionary and methodological documentation
+* Relationships: Part of CDC COVID-19 response data collection; Related to other CDC COVID-19 datasets
+
+**Quality Assessment**
+
+_Primary Criteria_
+* Completeness: High - covers all U.S. jurisdictions
+* Accuracy: High - follows standardized case definitions and reporting protocols
+* Timeliness: Monthly updates with 14-day reporting lag
+* Documentation: Excellent - detailed metadata and methodological documentation
+
+_Secondary Considerations_
+* Data suppression for privacy protection
+* Dynamic nature of case reporting with possible updates to historical data
+* Variable reporting compliance across jurisdictions
+
+**Potential Applications**
+* Epidemiological analysis of COVID-19 patterns and trends
+* Health equity research examining demographic disparities
+* Public health response evaluation and planning
+* Integration with other health and socioeconomic datasets
+
+**Additional Notes**
+* Limitations:
+  - Reporting discontinued after July 1, 2024
+  - Some jurisdictions stopped reporting after May 2023
+  - Data suppression may limit certain analyses
+  - Known issues with Texas death reporting
+
+* Special considerations:
+  - Data are provisional and subject to updates
+  - Privacy protections affect certain demographic combinations
+  - Regular quality assurance procedures applied by CDC
+
+
+
+## Title/Name
+
+**Basic Information**
+* Title/Name: 
+* URL/URI:
+* Rating (0-5): 5
+* Categories: [references to category numbers]
+* Last Updated:
+
+**Description**
+
+Brief description of the resource...
+
+**Content**
+* Key variables:
+* Sample size:
+* Time period:
+* Geographic coverage:
+
+**Technical Details**
+* Format:
+* Access method:
+* License:
+* Documentation quality:
+* Relationships to other resources: [part of; related to; referenced by; provided by]
+
+**Quality Assessment**
+
+_Primary Criteria_ \
+[List ratings/comments for each primary criterion]
+
+_Secondary Considerations_ \
+[List ratings/comments for each secondary criterion]
+
+**Potential Applications**
+* Use case 1:
+* Use case 2:
+* Integration notes:
+
+**Additional Notes**
+* Limitations:
+* Special considerations:
+
+- - - - - - - - - -
