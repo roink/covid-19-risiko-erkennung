@@ -248,8 +248,8 @@ CDC
 
 ### Google
 
-* https://datasetsearch.research.google.com/search?query=coronavirus+covid-19&docid=L2cvMTFranE1eXFrOQ%3D%3D
 * https://health.google.com/covid-19/open-data/raw-data
+* https://datasetsearch.research.google.com/search?query=coronavirus+covid-19&docid=L2cvMTFranE1eXFrOQ%3D%3D
 * https://github.com/GoogleCloudPlatform/covid-19-open-data/blob/main/docs/table-search-trends.md
 
 ## Survey, Public statistics
