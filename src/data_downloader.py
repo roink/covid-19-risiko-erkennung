@@ -1,5 +1,4 @@
 import os
-import kaggle
 
 # Define the download function
 def download_covid19_dataset(download_path=None):
@@ -27,6 +26,7 @@ def download_covid19_dataset(download_path=None):
     
     # Use the Kaggle API to download the dataset
     try:
+        import kaggle
         print("Downloading COVID-19 dataset from Kaggle...")
         kaggle.api.dataset_download_files(
             "meirnizri/covid19-dataset",
