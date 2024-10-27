@@ -7,8 +7,8 @@ import pandas as pd
 # Use __file__ to get the directory of the current script
 current_dir = os.path.dirname(__file__)
 
-def clean_covid19():
-    df = load_covid19()
+def clean_covid19(download=True):
+    df = load_covid19(download)
     
     # Specify column types and map Boolean variables
     bool_columns = ['PNEUMONIA', 'PREGNANT', 'DIABETES', 'COPD', 'ASTHMA', 'INMSUPR', 
