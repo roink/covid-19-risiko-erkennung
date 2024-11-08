@@ -30,11 +30,11 @@ def clean_covid19():
     df.replace('PATIENT_TYPE', pd.NA, inplace=True)
     df['PATIENT_TYPE'] = df['PATIENT_TYPE'].astype('category')
 
-    # DATE_DIED column missing value is '9999-99-99'
-    df['DATE_DIED'] = pd.to_datetime(df['DATE_DIED'].replace('9999-99-99', pd.NA), errors='coerce')
+    # DATE_DIED column alive value is '9999-99-99'
+    df.DATE_DIED = df.DATE_DIED.apply(lambda x: 0 if x == "9999-99-99" else 1)
 
     # Replace DATE_DIED with DIED (True if actual date, False otherwise)
-    df['DIED'] = df['DATE_DIED'].notna().astype('boolean')
+    df['DIED'] = df['DATE_DIED'].astype('boolean')
 
     # Drop the original DATE_DIED column
     df.drop('DATE_DIED', axis=1, inplace=True)
