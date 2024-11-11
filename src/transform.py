@@ -47,7 +47,7 @@ def clean_covid19():
     df['AGE'] = (df['AGE'] - df['AGE'].min()) / (df['AGE'].max() - df['AGE'].min())
 
     # male cannot be pregnant
-    df.loc[df.SEX == 'male', 'PREGNANT'] = False
+    df.loc[df.SEX == 2, 'PREGNANT'] = False
     # zuhause kann nicht beatmet werde & intubiert werden
     df.loc[df.PATIENT_TYPE==1,'ICU']=False
     df.loc[df.PATIENT_TYPE==1,'INTUBED']=False
