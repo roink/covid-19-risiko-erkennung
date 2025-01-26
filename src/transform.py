@@ -7,7 +7,7 @@ import pandas as pd
 # Use __file__ to get the directory of the current script
 current_dir = os.path.dirname(__file__)
 
-def clean_covid19():
+def clean_covid19(scale_age = True):
     df = load_covid19()
     
     # Specify column types and map Boolean variables
@@ -41,10 +41,10 @@ def clean_covid19():
     
     # --------------------------------------
     # Fix missing values RC, CK
-    
-    # Scale the age column using normalization
-    # This technique preserves the distribution and shifts values to a 0 to 1 scale
-    df['AGE'] = (df['AGE'] - df['AGE'].min()) / (df['AGE'].max() - df['AGE'].min())
+    if scale_age == True:
+        # Scale the age column using normalization
+        # This technique preserves the distribution and shifts values to a 0 to 1 scale
+        df['AGE'] = (df['AGE'] - df['AGE'].min()) / (df['AGE'].max() - df['AGE'].min())
 
     # male cannot be pregnant
     df.loc[df.SEX == 2, 'PREGNANT'] = False
@@ -65,8 +65,11 @@ def clean_covid19():
     # Define the file path and ensure the directory exists
     file_dir = os.path.join(os.path.dirname(current_dir), "data", "interim")
     os.makedirs(file_dir, exist_ok=True)  # Create directory if it doesn't exist
-       
-    file_path = os.path.join(file_dir, "covid-data-clean.csv")
+    
+    if scale_age == True:
+        file_path = os.path.join(file_dir, "covid-data-clean.csv")
+    else:
+        file_path = os.path.join(file_dir, "covid-data-clean-unscaled.csv")
     print('Saving clean dataset to: ' + file_path)
     
     # Save the cleaned dataframe to CSV

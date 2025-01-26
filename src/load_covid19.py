@@ -15,11 +15,15 @@ def load_covid19():
     
     return df
 
-def load_clean_covid19():
+def load_clean_covid19(scale_age = True):
     from src.transform import clean_covid19
-    clean_covid19()
+    clean_covid19(scale_age)
 
-    file_path = os.path.join(os.path.dirname(current_dir), "data", "interim", "covid-data-clean.csv")
+    if scale_age == True:
+        file_path = os.path.join(os.path.dirname(current_dir), "data", "interim", "covid-data-clean.csv")
+    else:
+        file_path = os.path.join(os.path.dirname(current_dir), "data", "interim", "covid-data-clean-unscaled.csv")
+    
     print(f"Loading clean dataset from: {file_path}")  # Debugging output
     df = pd.read_csv(file_path, low_memory=False)
     
