@@ -1,0 +1,240 @@
+---
+title: 'Kaggle Covid19: Data Wrangling'
+author: "Florian Endel"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=TRUE, cache=FALSE)
+
+rm(list=ls())
+
+
+# data
+library(tidyverse)
+library(lubridate)
+#library(data.table)
+
+# reading, writing
+library(readr)
+library(vroom)
+#library(fst)
+library(qs)
+#library(arrow)
+#library(feather)
+
+# modeling
+library(tidymodels)
+
+## Document
+library(knitr)
+library(kableExtra)  # For nice tables
+library(scales)      # For number formatting
+library(cowplot)     # For arranging multiple plots
+
+# utils
+library(here)
+
+# settings
+theme_set(theme_light())
+
+
+# source helper functions
+source(here('src', 'directories_files.R'))
+source(here('src', 'helper_functions.R'))
+
+
+```
+
+```{r data_kaggle_load}
+
+#kaggle_raw <- vroom(files$kaggle_raw)
+kaggle_raw <- read_csv(files$kaggle_raw, 
+                  col_types = cols(
+                    USMER = col_integer(),
+                    MEDICAL_UNIT = col_integer(),
+                    SEX = col_integer(),
+                    PATIENT_TYPE = col_integer(),
+                    DATE_DIED = col_character(),
+                    INTUBED = col_integer(),
+                    PNEUMONIA = col_integer(),
+                    AGE = col_integer(),
+                    PREGNANT = col_integer(),
+                    DIABETES = col_integer(),
+                    COPD = col_integer(),
+                    ASTHMA = col_integer(),
+                    INMSUPR = col_integer(),
+                    HIPERTENSION = col_integer(),
+                    OTHER_DISEASE = col_integer(),
+                    CARDIOVASCULAR = col_integer(),
+                    OBESITY = col_integer(),
+                    RENAL_CHRONIC = col_integer(),
+                    TOBACCO = col_integer(),
+                    CLASIFFICATION_FINAL = col_integer(),
+                    ICU = col_integer()
+                  ))
+
+```
+
+```{r data_kaggle_wrangle}
+
+# Define boolean columns
+bool_columns <- c('PNEUMONIA', 'PREGNANT', 'DIABETES', 'COPD', 'ASTHMA', 'INMSUPR',
+                 'HIPERTENSION', 'CARDIOVASCULAR', 'RENAL_CHRONIC', 'OTHER_DISEASE', 
+                 'OBESITY', 'TOBACCO', 'INTUBED', 'ICU')
+
+missing_values <- c(97, 99)
+
+# Transform the data
+kaggle <- kaggle_raw %>%
+  # Convert boolean columns
+  mutate(across(all_of(bool_columns), 
+                ~case_when(
+                  . %in% missing_values ~ NA,
+                  . == 1 ~ TRUE,
+                  . == 2 ~ FALSE
+                ))) %>%
+  # Convert SEX to categorical
+  mutate(
+    SEX = case_when(
+      SEX == 1 ~ "female",
+      SEX == 2 ~ "male",
+      TRUE ~ NA_character_
+    ),
+    SEX = factor(SEX)
+  ) %>%
+  
+  # Convert PATIENT_TYPE to categorical
+  mutate(
+    PATIENT_TYPE = case_when(
+      PATIENT_TYPE == 1 ~ "returned home",
+      PATIENT_TYPE == 2 ~ "hospitalization",
+      TRUE ~ NA_character_
+    ),
+    PATIENT_TYPE = factor(PATIENT_TYPE)
+  ) %>%
+  
+  # Handle DATE_DIED column
+  mutate(
+    DATE_DIED = na_if(DATE_DIED, "9999-99-99"),
+    DATE_DIED = as.Date(DATE_DIED, format = "%d/%m/%Y"),
+    DIED = !is.na(DATE_DIED)
+  ) 
+  
+
+#str(kaggle)
+
+```
+
+```{r data_kaggle_save}
+# Save the wrangled kaggle data to the interim directory as an .qs file
+qsave(kaggle, file = files$kaggle_interim)
+
+cat(paste0("Wrangled data saved to: ", files$kaggle_interim, "\n")) # Optional confirmation message
+```
+
+
+```{r data_kaggle_modeling}
+set.seed(123)    # for reproducibility
+
+# identify predictors and remove variables we don't want to use
+model_data <- kaggle %>%
+  # Remove variables we don't want as predictors
+  select(-CLASIFFICATION_FINAL,    # This is the COVID test result
+         -DATE_DIED,               # This was used to create DIED
+         -USMER,                   # Medical unit identifier
+         -MEDICAL_UNIT            # Type of medical unit
+  ) %>%
+  # Ensure all categorical variables are factors
+  mutate(
+    SEX = factor(SEX),
+    PATIENT_TYPE = factor(PATIENT_TYPE),
+    # Convert our outcome variables to factors
+    DIED = factor(DIED, levels = c(FALSE, TRUE)),
+    INTUBED = factor(INTUBED, levels = c(FALSE, TRUE)),
+    ICU = factor(ICU, levels = c(FALSE, TRUE))
+  )
+
+# Let's create three separate splits for our three different outcomes
+# This ensures we have stratified sampling for each outcome
+split_died <- initial_split(model_data, strata = DIED)
+split_intubed <- initial_split(model_data, strata = INTUBED)
+split_icu <- initial_split(model_data, strata = ICU)
+
+# Create training and testing sets
+train_died <- training(split_died)
+test_died <- testing(split_died)
+
+train_intubed <- training(split_intubed)
+test_intubed <- testing(split_intubed)
+
+train_icu <- training(split_icu)
+test_icu <- testing(split_icu)
+
+# Create recipe for death prediction
+recipe_died <- recipe(DIED ~ ., data = train_died) %>%
+  step_rm(INTUBED, ICU) %>%  # Remove other outcome variables
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%  # Remove zero-variance predictors
+  step_normalize(all_numeric_predictors())
+
+# Create recipe for intubation prediction
+recipe_intubed <- recipe(INTUBED ~ ., data = train_intubed) %>%
+  step_rm(DIED, ICU) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# Create recipe for ICU prediction
+recipe_icu <- recipe(ICU ~ ., data = train_icu) %>%
+  step_rm(DIED, INTUBED) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# Create cross-validation folds
+folds_died <- vfold_cv(train_died, v = 5, strata = DIED)
+folds_intubed <- vfold_cv(train_intubed, v = 5, strata = INTUBED)
+folds_icu <- vfold_cv(train_icu, v = 5, strata = ICU)
+
+```
+
+```{r data_kaggle_save_modeling}
+
+# Save model-related data to the modeling directory as separate .qs files
+qsave(model_data, file = files$kaggle_model_data)
+
+# Splits
+qsave(split_died, file = file.path(dirs$data_modeling_kaggle, "split_died.qs"))
+qsave(split_intubed, file = file.path(dirs$data_modeling_kaggle, "split_intubed.qs"))
+qsave(split_icu, file = file.path(dirs$data_modeling_kaggle, "split_icu.qs"))
+
+# Train
+qsave(train_died, file = file.path(dirs$data_modeling_kaggle, "train_died.qs"))
+qsave(test_died, file = file.path(dirs$data_modeling_kaggle, "test_died.qs"))
+qsave(train_intubed, file = file.path(dirs$data_modeling_kaggle, "train_intubed.qs"))
+
+# Test
+qsave(test_intubed, file = file.path(dirs$data_modeling_kaggle, "test_intubed.qs"))
+qsave(train_icu, file = file.path(dirs$data_modeling_kaggle, "train_icu.qs"))
+qsave(test_icu, file = file.path(dirs$data_modeling_kaggle, "test_icu.qs"))
+
+# Tidymodel recipes
+qsave(recipe_died, file = file.path(dirs$data_modeling_kaggle, "recipe_died.qs"))
+qsave(recipe_intubed, file = file.path(dirs$data_modeling_kaggle, "recipe_intubed.qs"))
+qsave(recipe_icu, file = file.path(dirs$data_modeling_kaggle, "recipe_icu.qs"))
+
+# Tidymodel folds
+qsave(folds_died, file = file.path(dirs$data_modeling_kaggle, "folds_died.qs"))
+qsave(folds_intubed, file = file.path(dirs$data_modeling_kaggle, "folds_intubed.qs"))
+qsave(folds_icu, file = file.path(dirs$data_modeling_kaggle, "folds_icu.qs"))
+
+
+cat(paste0("Modeling data and objects saved to directory: ", dirs$data_modeling_kaggle, "\n"))
+
+```

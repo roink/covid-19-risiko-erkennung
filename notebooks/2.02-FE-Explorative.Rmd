@@ -1,0 +1,281 @@
+---
+title: "Kaggle Covid19: Explorative Analysis"
+author: "Florian Endel"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=FALSE)
+
+rm(list=ls())
+
+
+## data
+library(tidyverse)
+library(lubridate)
+#library(data.table)
+
+## reading, writing
+#library(readr)
+#library(vroom)
+#library(fst)
+library(qs)
+#library(arrow)
+#library(feather)
+
+## modeling
+library(tidymodels)
+
+## Document
+library(knitr)
+library(kableExtra)  # For nice tables
+library(scales)      # For number formatting
+library(cowplot)     # For arranging multiple plots
+
+## utils
+library(here)
+
+## settings
+theme_set(theme_light())
+
+
+## source helper functions
+source(here('src', 'directories_files.R'))
+source(here('src', 'helper_functions.R'))
+
+
+
+# Use this when you want to refit all models:
+# clean_model_cache()
+
+
+```
+
+
+```{r data_kaggle_load}
+
+kaggle <- qread(file = files$kaggle_interim)
+model_data <- qread(file = files$kaggle_model_data)
+
+```
+
+
+```{r explorative_functions}
+
+
+# Helper function for frequency tables
+create_freq_table <- function(data, var_name) {
+  data %>%
+    count(!!sym(var_name), name = "Count") %>%
+    drop_na() %>%
+    mutate(
+      Percentage = Count / sum(Count) * 100,
+      Percentage = round(Percentage, 2)
+    ) %>%
+    kable(format = "html", caption = paste("Distribution of", var_name)) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+}
+
+# Helper function for categorical variables visualization
+plot_categorical <- function(data, var_name) {
+  ggplot(data, aes(x = !!sym(var_name))) +
+    geom_bar() +
+    theme_minimal() +
+    labs(title = paste("Distribution of", var_name),
+         y = "Count") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+# Helper function for boolean variables
+plot_boolean <- function(data, var_name) {
+  ggplot(data, aes(x = !!sym(var_name), fill = !!sym(var_name))) +
+    geom_bar() +
+    scale_fill_manual(values = c("TRUE" = "#619CFF", "FALSE" = "#F8766D")) +
+    theme_minimal() +
+    labs(title = paste("Distribution of", var_name),
+         y = "Count") +
+    theme(legend.position = "none")
+}
+
+```
+
+
+# Exploratory Data Analysis
+
+```{r data_summary}
+bool_columns <- c('PNEUMONIA', 'PREGNANT', 'DIABETES', 'COPD', 'ASTHMA', 'INMSUPR',
+                 'HIPERTENSION', 'CARDIOVASCULAR', 'RENAL_CHRONIC', 'OTHER_DISEASE', 
+                 'OBESITY', 'TOBACCO', 'INTUBED', 'ICU')
+
+# Demographic Variables
+## Age
+age_summary <- kaggle %>%
+  summarize(
+    Mean = mean(AGE, na.rm = TRUE),
+    Median = median(AGE, na.rm = TRUE),
+    SD = sd(AGE, na.rm = TRUE),
+    Min = min(AGE, na.rm = TRUE),
+    Max = max(AGE, na.rm = TRUE)
+  ) %>%
+  kable(digits = 2) %>%
+  kable_styling()
+
+age_plot <- ggplot(kaggle, aes(x = AGE)) +
+  geom_histogram(binwidth = 5, fill = "steelblue", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Age Distribution",
+       x = "Age",
+       y = "Count")
+
+## Sex
+sex_table <- create_freq_table(kaggle, "SEX")
+sex_plot <- plot_categorical(kaggle, "SEX")
+
+# Create plots for all boolean variables
+bool_plots <- map(bool_columns, ~{
+  plot_boolean(kaggle, .x)
+})
+
+# Arrange plots in a grid
+bool_grid <- plot_grid(plotlist = bool_plots, ncol = 3)
+
+# Patient Type
+patient_type_table <- create_freq_table(kaggle, "PATIENT_TYPE")
+patient_type_plot <- plot_categorical(kaggle, "PATIENT_TYPE")
+
+# Classification Final
+classification_table <- kaggle %>%
+  count(CLASIFFICATION_FINAL) %>%
+  mutate(Percentage = n/sum(n)*100) %>%
+  kable() %>%
+  kable_styling()
+
+```
+
+
+## Demographic Variables
+
+### Age Distribution
+```{r age-analysis}
+age_summary
+age_plot
+```
+
+### Sex Distribution
+```{r sex-analysis}
+sex_table
+sex_plot
+```
+
+## Medical Conditions
+```{r boolean-vars, fig.height=12, fig.width=12}
+bool_grid
+```
+
+## Patient Management
+```{r patient-type}
+patient_type_table
+patient_type_plot
+```
+
+
+
+## COVID-19 Classification
+
+classification: covid test findings. Values 1-3 mean that the patient was diagnosed with covid in different degrees. 4 or higher means that the patient is not a carrier of covid or that the test is inconclusive.
+
+```{r classification}
+classification_table
+```
+
+```{r covid_classification_modified}
+kaggle <- kaggle %>%
+  mutate(
+    covid_tested = CLASIFFICATION_FINAL <= 3,
+    covid_tested_degree = case_when(
+      CLASIFFICATION_FINAL == 1 ~ "1",
+      CLASIFFICATION_FINAL == 2 ~ "2",
+      CLASIFFICATION_FINAL == 3 ~ "3",
+      TRUE ~ "no"
+    ),
+    covid_tested_degree = factor(covid_tested_degree, levels = c("1", "2", "3", "no"))
+  )
+
+# classification analysis
+classification_analysis <- kaggle %>%
+  summarize(
+    total_cases = n(),
+    tested_positive = sum(covid_tested),
+    tested_negative = sum(!covid_tested),
+    positive_rate = mean(covid_tested) * 100
+  ) %>%
+  mutate(
+    across(where(is.numeric), ~round(., 2))
+  ) %>%
+  kable(col.names = c("Total Cases", "Tested Positive", "Tested Negative", "Positive Rate (%)"),
+        caption = "Overall COVID-19 Testing Summary") %>%
+  kable_styling()
+
+# Detailed classification table
+classification_detail <- kaggle %>%
+  count(CLASIFFICATION_FINAL) %>%
+  mutate(
+    percentage = n/sum(n)*100,
+    classification_meaning = case_when(
+      CLASIFFICATION_FINAL == 1 ~ "COVID-19 Positive Degree 1",
+      CLASIFFICATION_FINAL == 2 ~ "COVID-19 Positive Degree 2",
+      CLASIFFICATION_FINAL == 3 ~ "COVID-19 Positive Degree 3",
+      TRUE ~ "Negative or Inconclusive"
+    )
+  ) %>%
+  arrange(CLASIFFICATION_FINAL) %>%
+  kable(col.names = c("Classification", "Count", "Percentage", "Meaning"),
+        digits = 2) %>%
+  kable_styling()
+
+# Visualization for covid_tested
+covid_tested_plot <- ggplot(kaggle, aes(x = covid_tested, fill = covid_tested)) +
+  geom_bar() +
+  scale_fill_manual(values = c("TRUE" = "#619CFF", "FALSE" = "#F8766D")) +
+  theme_minimal() +
+  labs(title = "Distribution of COVID-19 Test Results",
+       x = "Tested Positive",
+       y = "Count") +
+  theme(legend.position = "none")
+
+# Visualization for covid_tested_degree
+covid_degree_plot <- ggplot(kaggle, aes(x = covid_tested_degree, fill = covid_tested_degree)) +
+  geom_bar() +
+  scale_fill_manual(values = c("1" = "#619CFF", "2" = "#36A5FF", "3" = "#1E88E5", "no" = "#F8766D")) +
+  theme_minimal() +
+  labs(title = "Distribution of COVID-19 Test Degrees",
+       x = "Test Degree",
+       y = "Count") +
+  theme(legend.position = "none")
+
+# Combine plots
+classification_plots <- plot_grid(covid_tested_plot, covid_degree_plot, 
+                                ncol = 2, labels = "AUTO")
+
+```
+
+
+### Overall Testing Summary
+```{r classification-summary}
+classification_analysis
+```
+
+### Detailed Classification Distribution
+```{r classification-detail}
+classification_detail
+```
+
+### Visual Distribution of Test Results
+```{r classification-plots}
+classification_plots
+```
+
+
