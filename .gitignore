@@ -7,6 +7,10 @@
 !data/processed/
 /data/processed/*
 
+# R-Markdown Cache
+/notebooks/*_cache
+/notebooks/*_files
+
 # Mac OS-specific storage files
 .DS_Store
 

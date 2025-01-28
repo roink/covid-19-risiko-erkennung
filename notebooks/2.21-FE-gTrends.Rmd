@@ -136,29 +136,38 @@ process_trends <- function(trends_result) {
 
 # gtrends call to handle multiple batches
 # (limit on simultaneous keywords)
-get_trends_batch <- function(keywords, geo, time_range) {
-  # Split keywords into batches of 5
-  keyword_batches <- split(keywords, ceiling(seq_along(keywords)/5))
+get_trends_batch <- function(keywords, geo, time_range, 
+                             batch_size=5, wait_time_s=5) {
+  # Split keywords into batches of batch_size
+  keyword_batches <- split(keywords, ceiling(seq_along(keywords)/batch_size))
+  n_batches <- length(keyword_batches)
+  
   
   # Get trends for each batch
-  all_trends <- map(keyword_batches, function(batch) {
-    Sys.sleep(1)  # Add delay to avoid API limits
+  all_trends <- imap(keyword_batches, \(batch, idx) {
+    if(interactive()){
+      message("Batch ", idx, "/", n_batches, "\n Waiting ", wait_time_s, "s")
+    }
+    Sys.sleep(wait_time_s)  # Add delay to avoid API limits
+    if(interactive()){
+      message(" Fetching trends for:\n   ", paste(batch, collapse = ", "))
+    }
     gtrends(
       keyword = batch,
       time = time_range,
       geo = geo
     )
+    if(interactive()){
+      message("======================")
+    }
   })
   
-  # Combine results
-  #combined_trends <- map_df(all_trends, ~.x$interest_over_time)
   return(all_trends)
 }
 
 
-
 # Download or load existing data
-if (!file.exists(files$gtrends_raw)) {
+if (!file.exists(files$gtrends_raw)) { 
   # Download data for Mexico (MX) covering the same period as our case data
   trends_raw <- get_trends_batch(
     keywords = covid_terms,
@@ -168,18 +177,18 @@ if (!file.exists(files$gtrends_raw)) {
   
   qsave(trends_raw, files$gtrends_raw)
 } else {
-  trends_raw <- qreread(files$gtrends_raw)
+  trends_raw <- qread(files$gtrends_raw)
 }
 
-
-if (!file.exists(files$grends_interim)) {
+# Combine results
+if (!file.exists(files$gtrends_interim)) {
   trends_data <- trends_raw %>%
     map(process_trends) %>%
     bind_rows()
   
   qsave(trends_data, files$gtrends_interim)
 } else {
-  trends_data <- read_rds(files$gtrends_interim)
+  trends_data <- qread(files$gtrends_interim)
 }
 
 

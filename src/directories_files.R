@@ -30,8 +30,8 @@ dirs$trends <- here("data", "raw", "Trends")      # Directory for Google Trends 
 #if (!dir.exists(dirs$data_processed)) dir.create(dirs$data_processed, recursive = TRUE) # Processed data
 
 if (!dir.exists(dirs$trends)) dir.create(dirs$trends, recursive = TRUE)          # Trends data (inside raw data)
-if (!dir.exists(dirname(dirs$data_modeling_kaggle))) {
-  dir.create(dirname(dirs$data_modeling_kaggle), recursive = TRUE)
+if (!dir.exists(dirs$data_modeling_kaggle)) {
+  dir.create(dirs$data_modeling_kaggle, recursive = TRUE)
 }
 
 
