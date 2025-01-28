@@ -2,7 +2,11 @@
 title: "Kaggle Covid19: Causal Analysis with DAGs"
 author: "Florian Endel"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -266,6 +270,7 @@ The DAG analysis reveals several important insights:
 ## Limitations
 
 This causal analysis has several limitations:
+
 - The DAG represents our assumptions about causal relationships but cannot prove causality.
 - We assume no unmeasured confounding.
 - The relationships are likely more complex than shown in our simplified DAG.
