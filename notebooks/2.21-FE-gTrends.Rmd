@@ -54,9 +54,17 @@ source(here('src', 'helper_functions.R'))
 #library(devtools)
 #devtools::install_github("PMassicotte/gtrendsR") # installation from github necessary
 library(gtrendsR)
+
+# install.packages("remotes")
+#remotes::install_github("trendecon/trendecon")
+library(trendecon)
+
+## Time series analysis
 library(forecast)
 library(jtools)
 library(sandwich)
+
+library(changepoint)
 
 ```
 
@@ -75,52 +83,101 @@ To complement our analysis of COVID-19 cases in Mexico, we examine Google search
 
 ## Data Collection
 
-```{r data_gtrends}
+```{r data_gtrends_terms}
 
 # Define search terms by category
 covid_terms <- c(
-  # Basic COVID terms
-  "COVID México",
-  "Coronavirus México",
-  "Síntomas COVID",      # COVID symptoms
-  "Prueba COVID",        # COVID test
+  # Basic COVID terms (disease names and general information)
+  "Covid", "Coronavirus", "Covid-19", "Covid19",  # basic terms
+  "SARS-CoV-2",                                   # scientific name
+  "Síntomas Covid",                               # symptoms
+  "Prueba Covid", "Test Covid",                   # testing
   
-  # Vaccination related
-  "Vacuna COVID",        # COVID vaccine
-  "Registro vacuna COVID", # Vaccine registration
-  "Efectos vacuna COVID", # Vaccine side effects
-  "Sputnik México",      # Specific vaccines used in Mexico
-  "Pfizer México",
+  # Key symptoms and diagnosis
+  "Pérdida olfato",         # loss of smell
+  "Pérdida gusto",          # loss of taste
+  "Fiebre Covid",           # fever
+  "Oxígeno sangre",         # blood oxygen
+  "Saturación oxígeno",     # oxygen saturation
   
-  # Risk factors and health
-  "Obesidad COVID",      # Obesity COVID
-  "Diabetes COVID",
-  "Hipertensión COVID",
-  "Factores de riesgo COVID", # Risk factors COVID
-  "Oximetro",           # Oximeter (common purchase during COVID)
+  # Prevention and Protection
+  "Cubrebocas",            # face masks
+  "Mascarilla",            # another term for mask
+  "Gel antibacterial",     # hand sanitizer
+  "Sana distancia",        # social distancing
+  "Quédate en casa",       # stay at home
   
-  # Deaths and burials
-  "Muertes COVID México", # COVID deaths
-  "Funeraria COVID",     # Funeral homes COVID
-  "Cremación COVID",     # Cremation COVID
+  # Medical Care
+  "Hospital Covid",
+  "Oxígeno",              # oxygen
+  "Intubación",           # intubation
+  "Terapia intensiva",    # intensive care
   
-  # Restrictions and prevention
-  "Semáforo COVID",      # Mexico's COVID traffic light system
-  "Cuarentena México",   # Quarantine
-  "Cubrebocas",         # Face masks
-  "Gel antibacterial",   # Hand sanitizer
+  # Vaccination (starting late 2020)
+  "Vacuna Covid",          # COVID vaccine
+  "Registro vacuna",       # vaccine registration
+  "Efectos vacuna",        # vaccine side effects
+  
+  # Government Response
+  "Semáforo Covid",        # COVID traffic light system
+  "Restricciones Covid",   # COVID restrictions
+  "Cuarentena",           # quarantine
   
   # Economic/Social Impact
-  "Apoyo COVID México",  # COVID support/aid
-  "Desempleo COVID",     # Unemployment COVID
-  "Home office México",
-  
-  # Treatment
-  "Tratamiento COVID",   # COVID treatment
-  "Hospital COVID",
-  "Tanque oxigeno"      # Oxygen tank (critical during shortages)
+  "Apoyo Covid",           # COVID support
+  "Desempleo Covid"       # unemployment
 )
 
+# Create translation dictionary
+term_translations <- c(
+  # Basic Information
+  "Covid" = "Covid",
+  "Coronavirus" = "Coronavirus",
+  "Covid-19" = "Covid-19",
+  "Covid19" = "Covid19",
+  "SARS-CoV-2" = "SARS-CoV-2",
+  "Síntomas Covid" = "Covid symptoms",
+  "Prueba Covid" = "Covid test",
+  "Test Covid" = "Covid test (alt)",
+  
+  # Symptoms and Diagnosis
+  "Pérdida olfato" = "Loss of smell",
+  "Pérdida gusto" = "Loss of taste",
+  "Fiebre Covid" = "Covid fever",
+  "Oxígeno sangre" = "Blood oxygen",
+  "Saturación oxígeno" = "Oxygen saturation",
+  
+  # Prevention and Protection
+  "Cubrebocas" = "Face masks",
+  "Mascarilla" = "Face masks (alt)",
+  "Gel antibacterial" = "Hand sanitizer",
+  "Sana distancia" = "Social distancing",
+  "Quédate en casa" = "Stay at home",
+  
+  # Medical Care
+  "Hospital Covid" = "Covid hospital",
+  "Oxígeno" = "Oxygen",
+  "Intubación" = "Intubation",
+  "Terapia intensiva" = "Intensive care",
+  
+  # Vaccination
+  "Vacuna Covid" = "Covid vaccine",
+  "Registro vacuna" = "Vaccine registration",
+  "Efectos vacuna" = "Vaccine side effects",
+  
+  # Government Response
+  "Semáforo Covid" = "Covid traffic light system",
+  "Restricciones Covid" = "Covid restrictions",
+  "Cuarentena" = "Quarantine",
+  
+  # Economic/Social Impact
+  "Apoyo Covid" = "Covid support",
+  "Desempleo Covid" = "Covid unemployment"
+)
+
+```
+
+```{r gtrends_functions}
 process_trends <- function(trends_result) {
    trends_result$interest_over_time$hits_num = suppressWarnings(
      trends_result$interest_over_time$hits %>%  
@@ -135,36 +192,62 @@ process_trends <- function(trends_result) {
 
 
 # gtrends call to handle multiple batches
-# (limit on simultaneous keywords)
+# (imap / map2 does not work...)
 get_trends_batch <- function(keywords, geo, time_range, 
-                             batch_size=5, wait_time_s=5) {
-  # Split keywords into batches of batch_size
+                           batch_size=5, wait_time_s=5, retry=3) {
+  # Split keywords into batches
   keyword_batches <- split(keywords, ceiling(seq_along(keywords)/batch_size))
   n_batches <- length(keyword_batches)
+  all_trends <- vector("list", length(keyword_batches))
   
+  for(i in seq_along(keyword_batches)) {
+    batch <- keyword_batches[[i]]
+    
+    # Add delay after first batch
+    if(i > 1) Sys.sleep(wait_time_s)
+    
+    # Status message
+    message("Processing batch ", i, "/", n_batches)
+    message("Keywords: ", paste(batch, collapse = ", "))
+    
+    # Try to get trends with error handling
+    tryCatch({
+      result <- trendecon:::gtrends_with_backoff(
+        keyword = batch,
+        time = time_range,
+        geo = geo,
+        retry = retry
+      )
+      
+      # Verify result structure
+      if(is.null(result)) {
+        warning("Null result for batch ", i)
+      } else {
+        message("Successfully retrieved data for batch ", i)
+      }
+      
+      all_trends[[i]] <- result
+      
+    }, error = function(e) {
+      warning("Error in batch ", i, ": ", e$message)
+      NULL
+    })
+    
+    message("======================")
+  }
   
-  # Get trends for each batch
-  all_trends <- imap(keyword_batches, \(batch, idx) {
-    if(interactive()){
-      message("Batch ", idx, "/", n_batches, "\n Waiting ", wait_time_s, "s")
-    }
-    Sys.sleep(wait_time_s)  # Add delay to avoid API limits
-    if(interactive()){
-      message(" Fetching trends for:\n   ", paste(batch, collapse = ", "))
-    }
-    gtrends(
-      keyword = batch,
-      time = time_range,
-      geo = geo
-    )
-    if(interactive()){
-      message("======================")
-    }
-  })
+  # Remove NULL results
+  all_trends <- all_trends[!sapply(all_trends, is.null)]
+  
+  if(length(all_trends) == 0) {
+    stop("No valid results retrieved")
+  }
   
   return(all_trends)
 }
+```
 
+```{r gtrends_data}
 
 # Download or load existing data
 if (!file.exists(files$gtrends_raw)) { 
@@ -172,10 +255,12 @@ if (!file.exists(files$gtrends_raw)) {
   trends_raw <- get_trends_batch(
     keywords = covid_terms,
     geo = "MX",
-    time_range = "2020-01-01 2021-05-31"
+    time_range = "2020-01-01 2021-05-31",
+    batch_size=5,
+    retry = 20
   )
   
-  qsave(trends_raw, files$gtrends_raw)
+  #qsave(trends_raw, files$gtrends_raw)
 } else {
   trends_raw <- qread(files$gtrends_raw)
 }
@@ -191,142 +276,320 @@ if (!file.exists(files$gtrends_interim)) {
   trends_data <- qread(files$gtrends_interim)
 }
 
-
-```
-
-## Data Processing
-
-```{r gtrends_wrangle, fig.height=12}
 # Add theme categorization
 trends_processed <- trends_data %>%
   mutate(
     theme = case_when(
-      keyword %in% c("COVID México", "Coronavirus México", 
-                    "Síntomas COVID", "Prueba COVID") ~ "Basic Information",
-      keyword %in% c("Vacuna COVID", "Registro vacuna COVID", 
-                    "Efectos vacuna COVID", "Sputnik México", 
-                    "Pfizer México") ~ "Vaccination",
-      keyword %in% c("Obesidad COVID", "Diabetes COVID", 
-                    "Hipertensión COVID", "Factores de riesgo COVID", 
-                    "Oximetro") ~ "Risk Factors",
-      keyword %in% c("Muertes COVID México", "Funeraria COVID", 
-                    "Cremación COVID") ~ "Mortality",
-      keyword %in% c("Semáforo COVID", "Cuarentena México", 
-                    "Cubrebocas", "Gel antibacterial") ~ "Prevention",
-      keyword %in% c("Apoyo COVID México", "Desempleo COVID", 
-                    "Home office México") ~ "Socioeconomic",
-      keyword %in% c("Tratamiento COVID", "Hospital COVID", 
-                    "Tanque oxigeno") ~ "Treatment",
+      # Basic Information
+      keyword %in% c("Covid", "Coronavirus", "Covid-19", "Covid19",
+                     "SARS-CoV-2", "Síntomas Covid", 
+                     "Prueba Covid", "Test Covid") ~ "Basic Information",
+      
+      # Symptoms and Diagnosis
+      keyword %in% c("Pérdida olfato", "Pérdida gusto", 
+                     "Fiebre Covid", "Oxígeno sangre",
+                     "Saturación oxígeno") ~ "Symptoms",
+      
+      # Prevention and Protection
+      keyword %in% c("Cubrebocas", "Mascarilla", 
+                     "Gel antibacterial", "Sana distancia",
+                     "Quédate en casa") ~ "Prevention",
+      
+      # Medical Care
+      keyword %in% c("Hospital Covid", "Oxígeno",
+                     "Intubación", "Terapia intensiva") ~ "Medical Care",
+      
+      # Vaccination
+      keyword %in% c("Vacuna Covid", "Registro vacuna",
+                     "Efectos vacuna") ~ "Vaccination",
+      
+      # Government Response
+      keyword %in% c("Semáforo Covid", "Restricciones Covid",
+                     "Cuarentena") ~ "Government Response",
+      
+      # Economic/Social Impact
+      keyword %in% c("Apoyo Covid", "Desempleo Covid") ~ "Socioeconomic",
+      
       TRUE ~ "Other"
     )
   )
 
-# Create theme-based visualizations
-ggplot(trends_processed, 
-       aes(x = date, y = hits_num, color = keyword)) +
-  geom_line(alpha = 0.7) +
-  facet_wrap(~theme, scales = "free_y") +
+```
+
+
+```{r gtrends_search_terms}
+
+# Create the enhanced summary table
+theme_terms <- trends_processed %>%
+  group_by(theme) %>%
+  summarise(
+    n_search_terms = n_distinct(keyword),
+    spanish_terms = paste(sort(unique(keyword)), collapse = ", "),
+    english_terms = paste(sort(unique(term_translations[keyword])), collapse = ", ")
+  ) %>%
+  arrange(desc(n_search_terms)) %>%
+  rename(
+    "Theme" = theme,
+    "Number of Terms" = n_search_terms,
+    "Search Terms (Spanish)" = spanish_terms,
+    "Search Terms (English)" = english_terms
+  )
+
+# Display the formatted table
+theme_terms %>%
+  kable(
+    caption = "Overview of Search Terms by Theme",
+    align = c("l", "c", "l", "l")  # left-align text, center numbers
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = TRUE,
+    position = "left"
+  ) %>%
+  column_spec(1, bold = TRUE) %>%  # Make theme names bold
+  scroll_box(width = "100%", height = "500px")  # Add scrolling if table is too long
+```
+
+
+```{r gtrends_visualize_ts}
+
+# Create a function to generate a plot for each theme
+create_theme_plot <- function(data, theme_name) {
+  theme_data <- data %>%
+    filter(theme == theme_name)
+  
+  # Get English translations for the keywords
+  translated_labels <- term_translations[theme_data$keyword %>% unique()]
+  
+  ggplot(theme_data, 
+         aes(x = date, y = hits_num, color = keyword)) +
+    geom_line(linewidth = 1, alpha = 0.7) +
+    scale_color_brewer(palette = "Set2",
+                      labels = translated_labels) +  # use translated names in legend
+    theme_minimal() +
+    theme(
+      legend.position = "right",
+      legend.title = element_blank(),
+      legend.text = element_text(size = 8),
+      plot.title = element_text(size = 12, face = "bold"),
+      axis.title = element_text(size = 10)
+    ) +
+    labs(
+      title = paste(theme_name),
+      y = "Search Interest (0-100)",
+      x = "Date"
+    )
+}
+
+# Get unique themes
+themes <- unique(trends_processed$theme)
+
+# Create list of plots
+theme_plots <- map(themes, ~create_theme_plot(trends_processed, .x))
+names(theme_plots) <- themes
+
+```
+
+## Google Trends: single keywords
+
+```{r basic_info_plot}
+theme_plots[["Basic Information"]]
+```
+
+```{r symptoms_plot}
+theme_plots[["Symptoms"]]
+```
+
+```{r prevention_plot}
+theme_plots[["Prevention"]]
+```
+
+```{r medical_care_plot}
+theme_plots[["Medical Care"]]
+```
+
+```{r vaccination_plot}
+theme_plots[["Vaccination"]]
+```
+
+```{r government_plot}
+theme_plots[["Government Response"]]
+```
+
+```{r socioeconomic_plot}
+theme_plots[["Socioeconomic"]]
+```
+
+## Google Trends by Theme
+
+```{r gtrends_by_theme}
+# Aggregate data by theme
+theme_aggregated <- trends_processed %>%
+  group_by(date, theme) %>%
+  summarise(
+    mean_interest = mean(hits_num, na.rm = TRUE),
+    max_interest = max(hits_num, na.rm = TRUE),
+    median_interest = median(hits_num, na.rm = TRUE),
+    n_terms = n()
+  ) %>%
+  ungroup()
+
+# plot with aggregated themes
+ggplot(theme_aggregated, 
+       aes(x = date, y = mean_interest, color = theme)) +
+  geom_smooth(method = "loess", span = 0.2, se = FALSE) +
+  geom_line(alpha = 0.3) +
+  scale_color_brewer(palette = "Set2") +
   theme_minimal() +
-  theme(legend.position = "bottom",
-        legend.text = element_text(size = 6)) +
+  theme(
+    legend.position = "right",
+    legend.title = element_blank()
+  ) +
   labs(
-    title = "COVID-19 Related Google Searches in Mexico by Theme",
-    subtitle = "Trends in different aspects of the pandemic",
-    y = "Search Interest (0-100)",
+    title = "Smoothed Trends in COVID-19 Related Searches by Theme",
+    y = "Mean Search Interest (0-100)",
     x = "Date"
   )
+
+# ... with confidence intervals
+# ggplot(theme_aggregated, 
+#        aes(x = date, y = mean_interest, color = theme, fill = theme)) +
+#   geom_ribbon(aes(ymin = median_interest, ymax = max_interest), alpha = 0.1) +
+#   geom_line(linewidth = 1) +
+#   scale_color_brewer(palette = "Set2") +
+#   scale_fill_brewer(palette = "Set2") +
+#   theme_minimal() +
+#   theme(
+#     legend.position = "right",
+#     legend.title = element_blank(),
+#     legend.text = element_text(size = 9),
+#     plot.title = element_text(size = 12, face = "bold"),
+#     axis.title = element_text(size = 10)
+#   ) +
+#   labs(
+#     title = "COVID-19 Related Google Searches in Mexico by Theme",
+#     subtitle = "Search interest across themes with range (median to max)",
+#     y = "Search Interest (0-100)",
+#     x = "Date"
+#   )
+
+# Area plot version
+ggplot(theme_aggregated, 
+       aes(x = date, y = mean_interest, fill = theme)) +
+  geom_area(position = "stack", alpha = 0.7) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.title = element_blank()
+  ) +
+  labs(
+    title = "Cumulative Search Interest by Theme",
+    y = "Total Search Interest",
+    x = "Date"
+  )
+
+
 ```
+
 
 ## Comparison of Search Trends and Mortality
 
 Temporal pattern of COVID-19 deaths in Mexico:
 
 ```{r mortality_timeline}
-mortality_by_month <- kaggle %>%
+mortality_daily <- kaggle %>%
   filter(DIED) %>%
-  mutate(month = floor_date(DATE_DIED, "month")) %>%
-  count(month) %>%
-  rename(deaths = n)
+  count(DATE_DIED) %>%
+  rename(
+    date = DATE_DIED,
+    deaths = n
+  ) %>%
+  # Ensure no negative values
+  mutate(deaths = pmax(0, deaths))  # replace any negative values with 0
 
-ggplot(mortality_by_month, aes(x = month, y = deaths)) +
+
+
+ggplot(mortality_daily, aes(x = date, y = deaths)) +
   geom_line(color = "darkred") +
-  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  geom_smooth(method = "gam", se = FALSE, color = "blue") +
+  scale_x_date(
+    date_breaks = "1 month",
+    date_labels = "%Y-%m",
+    expand = c(0.02, 0.02)  # reduce gap at ends
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)  # angled labels for better readability
+  ) +
   labs(
     title = "COVID-19 Deaths in Mexico",
-    subtitle = "Monthly totals with trend line",
-    x = "Month",
+    subtitle = "Daily cases with trend line",
+    x = "Date",
     y = "Number of Deaths",
     caption = "Data: Mexican Ministry of Health (SALUD)"
-  ) +
-  theme_minimal()
+  )
 ```
 
-Google search trends:
+In combination with Google search trends by theme:
 
-```{r gtrends_visualization}
-# Plot all search terms
-ggplot(trends_processed, aes(x = date, y = hits_num, color = keyword)) +
-  geom_line() +
-  geom_smooth(se = FALSE) +
+```{r gtrends_visualization, fig.height=8}
+
+ggplot() +
+  # Search interest
+  geom_line(data = theme_aggregated,
+            aes(x = date, y = rescale(mean_interest), color = "Search Interest"),
+            alpha = 0.7, linewidth = 0.8) +
+  # Deaths (rescaled within each facet)
+  geom_line(data = mortality_daily,
+            aes(x = date, y = rescale(deaths), color = "Deaths"),
+            alpha = 0.7, linewidth = 0.8) +
+  scale_color_manual(
+    values = c("Search Interest" = "steelblue", "Deaths" = "darkred"),
+    name = "Metric"
+  ) +
+  facet_wrap(~theme) +
   theme_minimal() +
-  scale_color_viridis_d() +
-  labs(
-    title = "COVID-19 Related Google Searches in Mexico",
-    subtitle = "Relative search volume over time",
-    y = "Search Interest (0-100)",
-    x = "Date",
-    color = "Search Term"
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "gray90")
   ) +
-  theme(legend.position = "bottom")
+  labs(
+    title = "COVID-19 Search Interest and Deaths by Theme",
+    subtitle = "Both metrics scaled to range 0-1",
+    x = "Date",
+    y = "Scaled Value",
+    caption = "Data: Google Trends & Mexican Ministry of Health (SALUD)"
+  )
 ```
 
-## Correlation Analysis
+# Correlation Analysis
 
 We can examine the relationship between search interest and mortality:
 
 ```{r correlation_analysis}
-## Correlation Analysis
-
-# Create translation dictionary
-term_translations <- c(
-  "COVID México" = "COVID Mexico",
-  "Coronavirus México" = "Coronavirus Mexico",
-  "Síntomas COVID" = "COVID symptoms",
-  "Prueba COVID" = "COVID test",
-  "Vacuna COVID" = "COVID vaccine",
-  "Registro vacuna COVID" = "COVID vaccine registration",
-  "Efectos vacuna COVID" = "COVID vaccine side effects",
-  "Sputnik México" = "Sputnik Mexico",
-  "Pfizer México" = "Pfizer Mexico",
-  "Obesidad COVID" = "COVID obesity",
-  "Diabetes COVID" = "COVID diabetes",
-  "Hipertensión COVID" = "COVID hypertension",
-  "Factores de riesgo COVID" = "COVID risk factors",
-  "Oximetro" = "Oximeter",
-  "Muertes COVID México" = "COVID deaths Mexico",
-  "Funeraria COVID" = "COVID funeral homes",
-  "Cremación COVID" = "COVID cremation",
-  "Semáforo COVID" = "COVID traffic light system",
-  "Cuarentena México" = "Quarantine Mexico",
-  "Cubrebocas" = "Face masks",
-  "Gel antibacterial" = "Hand sanitizer",
-  "Apoyo COVID México" = "COVID support Mexico",
-  "Desempleo COVID" = "COVID unemployment",
-  "Home office México" = "Home office Mexico",
-  "Tratamiento COVID" = "COVID treatment",
-  "Hospital COVID" = "COVID hospital",
-  "Tanque oxigeno" = "Oxygen tank"
-)
-
-# Aggregate search data by month for comparison
-search_by_month <- trends_processed %>%
-  mutate(month = floor_date(date, "month")) %>%
-  group_by(month, keyword) %>%
+# Aggregate data by week 
+search_by_week <- trends_processed %>%
+  mutate(week = floor_date(date, "week")) %>%
+  group_by(week, keyword) %>%
   summarize(mean_interest = mean(hits_num, na.rm = TRUE), .groups = "drop")
 
+mortality_by_week <- kaggle %>%
+  filter(DIED) %>%
+  mutate(week = floor_date(DATE_DIED, "week")) %>%
+  count(week) %>%
+  rename(
+    deaths = n
+  ) %>%
+  # Ensure no negative values
+  mutate(deaths = pmax(0, deaths))  # replace any negative values with 0
+
+
 # Join with mortality data
-combined_data <- search_by_month %>%
-  inner_join(mortality_by_month, by = "month")
+combined_data <- search_by_week %>%
+  inner_join(mortality_by_week, by = "week")
 
 # Calculate correlations with error handling
 correlations <- combined_data %>%
@@ -356,9 +619,17 @@ correlations <- combined_data %>%
   ) %>%
   arrange(desc(abs(correlation)))
 
-# Display correlations
-correlations %>%
+# Display correlations with theme information
+correlations_table_data <- correlations %>%
+  left_join(
+    # Get theme for each keyword
+    trends_processed %>% 
+      select(keyword, theme) %>% 
+      distinct(),
+    by = "keyword"
+  ) %>%
   select(
+    Theme = theme,
     `Search Term (Spanish)` = keyword,
     `Search Term (English)` = keyword_en,
     `Correlation` = correlation,
@@ -368,63 +639,287 @@ correlations %>%
   mutate(
     across(c(Correlation, `P-value`), ~round(., 3))
   ) %>%
-  kable(caption = "Correlations between Search Interest and COVID-19 Deaths") %>%
+  arrange(desc(abs(Correlation))) # sort by correlation strength
+
+correlations_table_data %>% 
+  kable(
+    caption = "Correlations between Search Interest and COVID-19 Deaths by Theme and Search Term"
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) 
+```
+
+
+```{r correlation_analysis_by_theme}
+# Aggregate data by week and theme
+search_by_week_theme <- trends_processed %>%
+  mutate(week = floor_date(date, "week")) %>%
+  group_by(week, theme) %>%
+  summarize(
+    mean_interest = mean(hits_num, na.rm = TRUE),
+    n_terms = n_distinct(keyword),
+    .groups = "drop"
+  )
+
+# Join with mortality data
+combined_data_theme <- search_by_week_theme %>%
+  inner_join(mortality_by_week, by = "week")
+
+# Calculate correlations by theme
+correlations_theme <- combined_data_theme %>%
+  group_by(theme) %>%
+  summarize(
+    correlation = tryCatch(
+      cor(mean_interest, deaths, use = "complete.obs"),
+      warning = function(w) NA_real_
+    ),
+    p_value = tryCatch(
+      cor.test(mean_interest, deaths)$p.value,
+      warning = function(w) NA_real_,
+      error = function(e) NA_real_
+    ),
+    sd_interest = sd(mean_interest, na.rm = TRUE),
+    n_terms = first(n_terms)  # number of search terms in theme
+  ) %>%
+  filter(!is.na(correlation)) %>%
+  filter(sd_interest > 0) %>%
+  mutate(
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      TRUE ~ "ns"
+    )
+  ) %>%
+  arrange(desc(abs(correlation)))
+
+# Display correlations
+correlations_theme %>%
+  select(
+    Theme = theme,
+    `Number of Terms` = n_terms,
+    Correlation = correlation,
+    `P-value` = p_value,
+    Significance = significance,
+    `SD of Interest` = sd_interest
+  ) %>%
+  mutate(
+    across(c(Correlation, `P-value`, `SD of Interest`), ~round(., 3))
+  ) %>%
+  kable(
+    caption = "Correlations between Theme-Aggregated Search Interest and COVID-19 Deaths"
+  ) %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Optional: Visualization of correlations
+ggplot(correlations_theme, 
+       aes(x = reorder(theme, correlation), y = correlation)) +
+  geom_col(aes(fill = abs(correlation))) +
+  geom_text(aes(label = significance), vjust = -0.5) +
+  scale_fill_viridis_c() +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Correlation between Search Themes and COVID-19 Deaths",
+    subtitle = "Significance levels: *** p<0.001, ** p<0.01, * p<0.05",
+    x = "Theme",
+    y = "Correlation Coefficient",
+    fill = "Absolute\nCorrelation"
+  )
+
 ```
 
 ## Interpretation
 
+```{r prepare_correlation_summary, echo=FALSE}
+# Helper function to format correlations
+format_cor <- function(x) sprintf("%.3f", x)
+
+# Get strongest positive and negative correlations
+top_positive <- correlations %>% 
+  filter(correlation > 0) %>% 
+  slice_max(correlation, n = 1)
+
+top_negative <- correlations %>% 
+  filter(correlation < 0) %>% 
+  slice_min(correlation, n = 1)
+
+# Get theme-based statistics
+theme_strong <- correlations_theme %>% 
+  filter(abs(correlation) > 0.4)
+
+theme_negative <- correlations_theme %>% 
+  filter(correlation < 0)
+
+# Count significant correlations
+sig_counts <- correlations %>%
+  group_by(significance) %>%
+  summarise(n = n())
+```
+
 The analysis reveals several interesting patterns in the relationship between Google searches and COVID-19 mortality in Mexico:
 
-1. **Strong Positive Correlations** (r > 0.6, p < 0.01):
-   - Unemployment searches showed the strongest correlation (r = 0.900), suggesting a strong parallel between the health and economic impact of the pandemic
-   - Searches for risk factors (r = 0.815) increased alongside mortality, indicating growing public health awareness
-   - Death-related searches (r = 0.635) and face mask queries (r = 0.632) closely tracked actual mortality patterns
+1. **Individual Search Terms** (based on weekly correlations):
+   - The strongest positive correlation was found for "`r top_positive$keyword_en`" (r = `r format_cor(top_positive$correlation)`, p < 0.001), suggesting a strong relationship between economic concerns and mortality patterns
+   - Face mask-related searches ("Mascarilla" and "Cubrebocas") both showed strong positive correlations (r > 0.5), indicating consistent public interest in basic prevention measures
+   - `r nrow(correlations %>% filter(p_value < 0.05))` out of `r nrow(correlations)` search terms showed statistically significant correlations (p < 0.05)
 
-2. **Moderate Correlations** (0.3 < r < 0.6, not significant):
-   - Health-related terms like symptoms, hospital information, and oximeter showed moderate positive correlations
-   - These patterns suggest ongoing public health information seeking throughout the pandemic
+2. **Theme-Level Analysis**:
+   - Prevention-related searches showed the strongest theme-level correlation (r = `r format_cor(correlations_theme$correlation[correlations_theme$theme == "Prevention"])`, p < 0.001), suggesting that preventive measures were closely aligned with mortality trends
+   - `r nrow(theme_negative)` themes showed negative correlations:
+     ```{r theme_negative_list, echo=FALSE, results='asis'}
+     theme_negative %>%
+       mutate(text = sprintf("- %s (r = %.3f)", theme, correlation)) %>%
+       pull(text) %>%
+       cat(sep = "\n")
+     ```
 
-3. **Vaccine-Related Patterns**:
-   - Interestingly, vaccine-related searches showed negative correlations with mortality
-   - This might reflect the timing of vaccination campaigns, which began as mortality rates were declining
-   - The negative correlations for vaccine side effects (-0.345) and registration (-0.267) suggest these became prominent topics in later phases of the pandemic
+3. **Temporal Patterns**:
+   - Vaccination-related searches showed negative correlations (r = `r format_cor(correlations_theme$correlation[correlations_theme$theme == "Vaccination"])`, p < 0.05), likely reflecting the timing of vaccination campaigns as mortality rates were declining
+   - Socioeconomic searches maintained moderate positive correlation (r = `r format_cor(correlations_theme$correlation[correlations_theme$theme == "Socioeconomic"])`, p < 0.01), suggesting persistent economic concerns throughout the pandemic
 
-4. **Prevention and Treatment**:
-   - Basic prevention terms (hand sanitizer, face masks) showed varying correlations
-   - Treatment-related searches showed weak to moderate correlations, possibly indicating consistent information seeking regardless of mortality rates
+4. **Search Behavior Categories**:
+   - High-correlation themes (|r| > 0.4):
+     ```{r strong_themes, echo=FALSE, results='asis'}
+     theme_strong %>%
+       mutate(text = sprintf("- %s (r = %.3f)", theme, correlation)) %>%
+       pull(text) %>%
+       cat(sep = "\n")
+     ```
+   - Basic information searches showed weak correlation (r = `r format_cor(correlations_theme$correlation[correlations_theme$theme == "Basic Information"])`, ns), suggesting consistent baseline information seeking regardless of mortality rates
 
 ## Limitations
 
-- Google Trends data represents only internet users, which might not be representative of the entire Mexican population, particularly in rural or less connected areas
+```{r limitation_stats, echo=FALSE}
+n_terms <- nrow(correlations)
+n_themes <- nrow(correlations_theme)
+date_range <- range(mortality_by_week$week)
+```
+
+- Analysis covers `r n_terms` search terms grouped into `r n_themes` themes over the period from `r format(date_range[1], "%B %Y")` to `r format(date_range[2], "%B %Y")`
+- Google Trends data represents only internet users, which might not be representative of the entire Mexican population
 - Search patterns might be influenced by media coverage and public health campaigns rather than direct experience with COVID-19
 - The relative nature of Google Trends data (0-100 scale) makes absolute comparisons between terms difficult
 - Search behavior might differ across regions within Mexico, while our mortality data is national
 - Correlation doesn't imply causation; many other factors influence both search behavior and mortality rates
-- Some important search terms might show no variation (zero standard deviation) and were thus excluded from the analysis
 - The timing of searches might reflect both anticipatory behavior (searching before getting sick) and reactive behavior (searching after infection)
 
-## Time Series Analysis of Search Trends
+
+# Cross-Correlation Analysis
+
+Cross-correlation analysis helps to understand the temporal relationships between two time series. In our context, it helps us investigate whether and how search behaviors are related to COVID-19 mortality across different time shifts (lags).
+
+**What is Cross-Correlation?**
+
+- Measures the correlation between two time series at different time lags
+- Positive lags show how one series relates to future values of another
+- Negative lags show relationships with past values
+- Lag 0 represents the concurrent correlation
+
+**Why Use Cross-Correlation?**
+
+- Simple correlation only captures concurrent relationships
+- Search behaviors might precede (early warning) or follow (reactive response) mortality
+- Different themes might have different temporal relationships with mortality
+- Understanding these patterns can inform public health strategies
+
+
+```{r cross_correlation_analysis}
+# Function to calculate cross-correlation for different lags
+calc_ccf <- function(data, max_lag = 8) {
+  ccf_result <- ccf(data$mean_interest, data$deaths, 
+                    lag.max = max_lag, plot = FALSE)
+  data.frame(
+    lag = -max_lag:max_lag,
+    correlation = as.numeric(ccf_result$acf)
+  )
+}
+
+# Calculate cross-correlations for each theme
+cross_correlations <- combined_data_theme %>%
+  group_by(theme) %>%
+  nest() %>%
+  mutate(
+    ccf = map(data, calc_ccf)
+  ) %>%
+  unnest(ccf)
+
+# Plot cross-correlations
+ggplot(cross_correlations, 
+       aes(x = lag, y = correlation, color = theme)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~theme) +
+  theme_minimal() +
+  labs(
+    title = "Cross-Correlations between Search Interest and Deaths",
+    subtitle = "By theme and lag (weeks)",
+    x = "Lag (weeks)",
+    y = "Cross-correlation"
+  )
+```
+
+## Interpretation
+
+The cross-correlation analysis reveals important temporal relationships between search behaviors and COVID-19 deaths, with different themes showing distinct patterns:
+
+1. **Government Response**
+   - Shows strongest correlation at negative lags (around -5 weeks)
+   - This suggests that government response-related searches **preceded** death counts by about 5 weeks
+   - The declining pattern indicates that searches about government measures were more predictive than reactive
+
+2. **Prevention**
+   - Exhibits consistently high correlation across lags
+   - Slight peak at negative lags suggests preventive searches slightly **preceded** mortality
+   - The sustained correlation indicates ongoing public interest in prevention throughout mortality waves
+
+3. **Socioeconomic**
+   - Peak correlation at lag 0 to -1 weeks
+   - Shows symmetric decline in both directions
+   - Suggests **concurrent** relationship between economic concerns and mortality
+
+4. **Symptoms**
+   - Shows strongest correlation at positive lags (around +5 weeks)
+   - Indicates that symptom searches **followed** increases in death counts
+   - May reflect growing public awareness after mortality waves
+
+5. **Medical Care**
+   - Shows weak but increasing correlation at positive lags
+   - Suggests medical care searches slightly **lagged behind** death counts
+   - The pattern might reflect reactive healthcare information seeking
+
+6. **Basic Information**
+   - Shows weak, relatively constant correlation across lags
+   - Suggests consistent baseline information seeking
+   - Little temporal relationship with mortality patterns
+
+7. **Vaccination**
+   - Shows consistently negative correlation
+   - Flat pattern across lags
+   - Reflects the inverse relationship with mortality, likely due to vaccination timeline
+
+- **Predictive Patterns**: Government response and prevention searches tended to precede mortality increases
+- **Reactive Patterns**: Symptom and medical care searches tended to follow mortality increases
+- **Concurrent Patterns**: Socioeconomic searches showed strongest correlation with current mortality
+- **Independent Patterns**: Vaccination and basic information searches showed little temporal relationship with mortality
+
+
+
+# Seasonal Decomposition
 
 To better understand the temporal patterns in COVID-19 related searches, we perform a time series decomposition and impact analysis focusing on the initial pandemic period.
 
-### Seasonal Decomposition
-
-First, let's examine the underlying patterns in search behavior before the pandemic:
+Example for seasonal decomposition of COVID-19 search queries:
 
 ```{r ts_decomposition}
-library(forecast)
-library(jtools)  # for summ function
-
 # Create time series for pre-pandemic period
 ts_in <- trends_processed %>%
   filter(date >= '2020-01-01' & date <= '2021-05-31',
-         keyword == "COVID México") %>%  # or another key term
+         keyword == covid_terms[[1]]) %>%  # or another key term
   arrange(date) %>%
   select(hits_num) %>%
   pull()
 
-covid_ts <- ts(ts_in, start = c(2019, 1), frequency = 12)
+covid_ts <- ts(ts_in, start = c(2020, 1), frequency = 12)
 
 # Decompose the time series
 dcp <- mstl(covid_ts, s.window = "periodic")
@@ -439,80 +934,455 @@ ggAcf(covid_ts) +
   labs(title = "Autocorrelation Plot (COVID-19 Search Queries)")
 ```
 
-### Impact Analysis
+# Changepoint Analysis of Search Patterns
 
-We now assess whether specific events (like lockdown implementation) are statistically associated with changes in search patterns:
 
-```{r impact_analysis}
-# Prepare data for impact analysis
-data_impact <- trends_processed %>%
-  filter(keyword == "COVID México",  # or another key term
-         date <= '2021-05-31') %>%
-  arrange(date) %>%
-  mutate(
-    time = row_number() - 1,  # time index starting at 0
-    month = as.factor(month(date)),
-    hits_l1 = lag(hits_num),
-    # Define treatment period (e.g., first major outbreak or lockdown)
-    after = if_else(date >= as.Date('2020-03-01'), 1, 0),
-    tau = min(ifelse(after == 1, time, NA_integer_), na.rm = TRUE),
-    time_diff = time - tau,
-    A_TimeDiff = after * time_diff
+Changepoint analysis identifies significant shifts in the mean level of search interest. We use:
+- PELT (Pruned Exact Linear Time) algorithm
+- Modified Bayesian Information Criterion (MBIC) for penalty selection
+- Focus on changes in mean level
+
+
+```{r ts_changepoint}
+
+theme_ts_data <- trends_processed %>%
+  group_by(theme, date) %>%
+  summarize(
+    mean_interest = mean(hits_num, na.rm = TRUE),
+    .groups = "drop"
   )
 
-# Fit segmented regression
-lm_out <- lm(log(hits_num + 1) ~ time + month + after + A_TimeDiff, 
-             data = data_impact)
+# Function to detect and format changepoints
+analyze_changepoints <- function(data, theme_name) {
+  # Detect changes in mean
+  cpts <- cpt.mean(data$mean_interest, method = "PELT", 
+                   penalty = "MBIC")  # Modified Bayesian Information Criterion
+  
+  # Extract changepoint dates and segment means
+  change_dates <- data$date[cpts@cpts]
+  segments <- data.frame(
+    start_date = c(data$date[1], change_dates),
+    end_date = c(change_dates, data$date[nrow(data)]),
+    mean_level = c(cpts@param.est$mean, 0)
+  )
+  
+  return(list(
+    dates = change_dates,
+    segments = segments
+  ))
+}
 
-# Calculate percentage change
-ipct_out <- round(exp(coef(lm_out)["A_TimeDiff"]) * 100 - 100, 3)
+# Get changepoints for each theme
+theme_changepoints <- theme_ts_data %>%
+  group_by(theme) %>%
+  nest() %>%
+  mutate(
+    changepoints = map2(data, theme, analyze_changepoints)
+  )
 
-# Display results with Newey-West standard errors
-summ(lm_out, 
-     vcov = NeweyWest(lm_out, lag = 3, prewhite = TRUE, adjust = TRUE), 
-     digits = 3)
+# Visualization of changepoints and segments
+create_changepoint_plot <- function(data, cp_info, theme_name) {
+  ggplot() +
+    # Original data
+    geom_line(data = data, 
+              aes(x = date, y = mean_interest),
+              color = "gray50", alpha = 0.7) +
+    # Segment means
+    geom_segment(data = cp_info$segments,
+                aes(x = start_date, xend = end_date,
+                    y = mean_level, yend = mean_level),
+                color = "blue", size = 1) +
+    # Changepoints
+    geom_vline(xintercept = cp_info$dates,
+               color = "red", linetype = "dashed") +
+    # Add points at changepoints
+    geom_point(data = data.frame(date = cp_info$dates,
+                                y = data$mean_interest[match(cp_info$dates, data$date)]),
+               aes(x = date, y = y),
+               color = "red", size = 3) +
+    theme_minimal() +
+    labs(
+      title = paste("Changepoint Analysis:", theme_name),
+      subtitle = "Red lines indicate significant changes in mean level",
+      x = "Date",
+      y = "Search Interest",
+      caption = "Method: PELT algorithm with MBIC penalty"
+    )
+}
+
+# Create plots for all themes
+changepoint_plots <- theme_changepoints %>%
+  mutate(
+    plots = pmap(list(data, changepoints, theme), create_changepoint_plot)
+  )
+
 ```
-### Interpretation of Time Series Analysis
 
-The decomposition and regression analysis reveal several key patterns in COVID-19 related searches:
 
-1. **Trend Component**: 
-   - The data shows a sharp increase in early 2020, coinciding with the pandemic's onset
-   - After the initial spike, search interest stabilized at a higher level than pre-pandemic
-   - A gradual declining trend is visible from 2022 onwards
+```{r show_changepoints, echo=FALSE, results='asis'}
+walk2(theme_changepoints$theme, theme_changepoints$changepoints, 
+      function(theme, cp) {
+  cat("\n\n### ", theme, "\n\n")
+  
+  # Print number of changes
+  cat("\nNumber of changepoints:", length(cp$dates), "\n")
+  
+  # Create table of changes
+  changes_table <- cp$segments %>%
+    mutate(
+      Period = paste(format(start_date, "%Y-%m-%d"), 
+                    "to", 
+                    format(end_date, "%Y-%m-%d")),
+      `Mean Level` = round(mean_level, 2)
+    ) %>%
+    select(Period, `Mean Level`)
+  
+  print(kable(changes_table))
+  
+  # Print the plot
+  print(changepoint_plots$plots[theme_changepoints$theme == theme][[1]])
+})
+```
 
-2. **Seasonal Pattern**:
-   - Clear monthly seasonality is present in the data
-   - Strongest negative seasonal effects in late summer/fall (August-November)
-   - The seasonal component shows regular fluctuations with approximately 0.6 unit amplitude
+## Summary of Search Interest Transitions
 
-3. **Impact Analysis Results**:
-   - **Immediate Effect**: A significant level shift occurred after the intervention (β = 1.220, p = 0.003), indicating an immediate 239% increase (e^1.220 - 1) in search intensity
-   - **Trend Change**: The negative interaction term (β = -0.057, p = 0.028) suggests a gradual decline in the intervention effect over time
-   - **Monthly Effects**: Strongest seasonal decreases in August through November (significant at p < 0.01)
-   - The model explains a substantial portion of the variance (R² = 0.773)
+```{r summary_stats, echo=FALSE}
+# Get number of changepoints by theme
+cp_counts <- theme_changepoints %>%
+  mutate(n_changes = map_int(changepoints, ~length(.x$dates))) %>%
+  arrange(desc(n_changes))
 
-4. **Autocorrelation Structure**:
-   - Strong positive autocorrelation in the first 4-5 lags
-   - Negative autocorrelation at longer lags
-   - This pattern suggests short-term persistence in search behavior followed by periodic reversals
+# Get maximum values for each theme
+theme_maxima <- theme_changepoints %>%
+  mutate(
+    max_level = map_dbl(changepoints, 
+                        ~max(.x$segments$mean_level))
+  )
 
-### Practical Implications
+# Get initial outbreak period changes
+initial_outbreak <- theme_changepoints %>%
+  mutate(
+    early_change = map_dbl(changepoints, function(cp) {
+      early_segments <- cp$segments %>%
+        filter(start_date >= as.Date("2020-02-01"),
+               start_date <= as.Date("2020-04-30"))
+      if(nrow(early_segments) > 0) max(early_segments$mean_level) else NA
+    })
+  )
+```
 
-1. **Public Health Communication**:
-   - The strong immediate effect suggests high initial public interest/concern
-   - The declining trend indicates a possible "pandemic fatigue" in information seeking
-   - Seasonal patterns could be used to time public health messaging
+The changepoint analysis reveals distinct phases in public attention across different themes during the COVID-19 pandemic in Mexico (`r format(min(theme_ts_data$date), "%B %Y")` - `r format(max(theme_ts_data$date), "%B %Y")`):
 
-2. **Policy Relevance**:
-   - The gradual decline in effect (-5.7% per month) suggests a normalization of information-seeking behavior
-   - Seasonal variations should be considered when interpreting search patterns
-   - The high R² indicates that the model captures the major drivers of search behavior
+### Key Phases and Transitions
 
-### Limitations
+1. **Initial Outbreak Phase (February - April 2020)**
+   - Sharp increases across multiple themes
+   - Notable spikes in:
+     * Government Response (peak: `r format(filter(theme_maxima, theme == "Government Response")$max_level, digits=2)`)
+     * Prevention measures (peak: `r format(filter(theme_maxima, theme == "Prevention")$max_level, digits=2)`)
+     * Basic Information (significant increase in March)
 
-- The analysis period might be too short to establish robust seasonal patterns
-- The model assumes linear trends which might not fully capture the complexity of public response
-- Search patterns might reflect media coverage rather than actual health concerns
-- The presence of strong autocorrelation suggests possible omitted time-varying factors
+2. **First Wave Response (April - August 2020)**
+   - Gradual decline in government and prevention-related searches
+   - Sustained moderate interest in basic information
+   - Emergence of socioeconomic concerns (peak: `r format(filter(theme_maxima, theme == "Socioeconomic")$max_level, digits=2)`)
 
+3. **Second Wave (November 2020 - January 2021)**
+   - Renewed interest in basic information (peak: `r format(filter(theme_maxima, theme == "Basic Information")$max_level, digits=2)`)
+   - Increased medical care searches (peak: `r format(filter(theme_maxima, theme == "Medical Care")$max_level, digits=2)`)
+   - Initial vaccination interest emerging
+
+4. **Vaccination Period (January - May 2021)**
+   - Most dynamic phase for vaccination searches
+   - Multiple changepoints with increasing interest (final peak: `r format(filter(theme_maxima, theme == "Vaccination")$max_level, digits=2)`)
+   - Declining interest in other themes
+
+
+- **Most Variable**: `r paste(filter(cp_counts, n_changes == max(n_changes))$theme, collapse = " and ")` (`r max(cp_counts$n_changes)` changepoints each)
+- **Most Stable**: `r filter(cp_counts, n_changes == min(cp_counts$n_changes))$theme` (only `r min(cp_counts$n_changes)` changepoint)
+- **Most Recent Peak**: Vaccination (May 2021)
+- **Early Peak & Decline**: Government Response and Prevention
+
+1. **Search Evolution**
+   - Shift from prevention/response to vaccination focus
+   - Decreasing interest in basic information over time
+   - Short-lived peaks in government response measures
+
+2. **Theme Interactions**
+   - Medical care interest aligned with outbreak waves
+   - Socioeconomic concerns showed distinct early peak
+   - Prevention measures tracked with government responses
+
+3. **Public Attention Spans**
+   - Initial high interest followed by adaptation
+   - Renewed attention during second wave
+   - Sustained vaccination interest with multiple peaks
+
+
+# Impact Analysis of first lockdown (2020-03-01)
+
+
+Impact analysis helps us understand how significant events during the pandemic affected public information-seeking behavior. Using interrupted time series analysis, we examine whether specific interventions or events caused substantial changes in search patterns.
+
+Impact analysis, in this context, uses segmented regression to:
+
+- Compare search patterns before and after key events
+- Measure both immediate (level) and gradual (slope) changes
+- Account for underlying trends and seasonal patterns
+- Quantify the magnitude of changes
+
+
+The analysis provides several key metrics:
+
+- Immediate effect (`after` coefficient)
+- Change in trend (`A_TimeDiff` coefficient)
+- Percentage changes in search intensity
+- Statistical significance of changes
+
+
+```{r impact_analysis}
+# Function to perform impact analysis for a theme
+analyze_theme_impact <- function(theme_data, theme_name, intervention_date = '2020-03-01') {
+  data_impact <- theme_data %>%
+    arrange(date) %>%
+    mutate(
+      time = row_number() - 1,
+      month = as.factor(month(date)),
+      hits_l1 = lag(mean_interest),
+      after = if_else(date >= as.Date(intervention_date), 1, 0),
+      tau = min(ifelse(after == 1, time, NA_integer_), na.rm = TRUE),
+      time_diff = time - tau,
+      A_TimeDiff = after * time_diff
+    )
+  
+  # Fit model
+  lm_out <- lm(log(mean_interest + 1) ~ time + month + after + A_TimeDiff, 
+               data = data_impact)
+  
+  # Get results with Newey-West standard errors
+  results <- summ(lm_out, 
+                 vcov = NeweyWest(lm_out, lag = 3, prewhite = TRUE, adjust = TRUE), 
+                 digits = 3)
+  
+  # Calculate percentage changes
+  pct_change <- exp(coef(lm_out)["A_TimeDiff"]) * 100 - 100
+  immediate_effect <- exp(coef(lm_out)["after"]) * 100 - 100
+  
+  return(list(
+    model = lm_out,
+    summary = results,
+    pct_trend_change = pct_change,
+    pct_immediate_change = immediate_effect,
+    data = data_impact
+  ))
+}
+
+# Apply analysis to each theme
+theme_impacts <- theme_ts_data %>%
+  group_by(theme) %>%
+  nest() %>%
+  mutate(
+    impact_analysis = map2(data, theme, analyze_theme_impact)
+  )
+
+```
+
+```{r impact_summary_simple, eval=FALSE}
+
+# Create summary table
+impact_summary <- theme_impacts %>%
+  mutate(
+    immediate_effect = map_dbl(impact_analysis, ~.x$pct_immediate_change),
+    trend_change = map_dbl(impact_analysis, ~.x$pct_trend_change),
+    model_r2 = map_dbl(impact_analysis, ~summary(.x$model)$r.squared)
+  ) %>%
+  select(theme, immediate_effect, trend_change, model_r2)
+
+
+# Display summary table
+kable(impact_summary %>%
+      mutate(across(c(immediate_effect, trend_change, model_r2), 
+                   ~round(., 3))),
+      col.names = c("Theme", "Immediate Effect (%)", 
+                   "Monthly Trend Change (%)", "R²"),
+      caption = "Impact Analysis Summary by Theme") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+```{r impact_summary, echo=FALSE}
+
+## key findings by theme
+impact_summary_table <- theme_impacts %>%
+  mutate(
+    immediate_effect = map_dbl(impact_analysis, ~.x$pct_immediate_change),
+    trend_change = map_dbl(impact_analysis, ~.x$pct_trend_change),
+    model_r2 = map_dbl(impact_analysis, ~summary(.x$model)$r.squared),
+    # Add p-values
+    p_immediate = map_dbl(impact_analysis, 
+                         ~summary(.x$model)$coefficients["after", "Pr(>|t|)"]),
+    p_trend = map_dbl(impact_analysis, 
+                      ~summary(.x$model)$coefficients["A_TimeDiff", "Pr(>|t|)"])
+  ) %>%
+  mutate(
+    significance_immediate = case_when(
+      p_immediate < 0.001 ~ "***",
+      p_immediate < 0.01 ~ "**",
+      p_immediate < 0.05 ~ "*",
+      TRUE ~ "ns"
+    ),
+    significance_trend = case_when(
+      p_trend < 0.001 ~ "***",
+      p_trend < 0.01 ~ "**",
+      p_trend < 0.05 ~ "*",
+      TRUE ~ "ns"
+    )
+  ) %>%
+  arrange(desc(abs(immediate_effect))) %>%  # sort by magnitude of immediate effect
+  mutate(
+    # Format the effects with significance markers
+    immediate_effect_fmt = sprintf("%.1f%% %s", 
+                                 immediate_effect, 
+                                 significance_immediate),
+    trend_change_fmt = sprintf("%.1f%% %s", 
+                             trend_change, 
+                             significance_trend)
+  )
+
+# Create the formatted table
+impact_summary_table %>%
+  select(
+    Theme = theme,
+    `Immediate Effect` = immediate_effect_fmt,
+    `Monthly Trend Change` = trend_change_fmt,
+    `R²` = model_r2
+  ) %>%
+  kable(
+    caption = "Impact Analysis of March 2020 Intervention by Theme",
+    align = c("l", "r", "r", "r"),
+    digits = 3
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE
+  ) %>%
+  footnote(
+    symbol = c(
+      "Significance levels: *** p<0.001, ** p<0.01, * p<0.05, ns: not significant",
+      "Immediate Effect: Percentage change in search interest immediately after March 1, 2020",
+      "Monthly Trend Change: Percentage change in monthly trend after intervention",
+      "R²: Proportion of variance explained by the model"
+    )
+  )
+
+
+```
+
+
+```{r impact_plots}
+# Visualization of impacts
+create_impact_plot <- function(impact_data, theme_name, intervention_date = '2020-03-01') {
+  ggplot(impact_data$data, aes(x = date)) +
+    geom_point(aes(y = mean_interest), alpha = 0.5) +
+    geom_line(aes(y = exp(predict(impact_data$model)) - 1), 
+              color = "blue", size = 1) +
+    geom_vline(xintercept = as.Date(intervention_date), 
+               linetype = "dashed", color = "red") +
+    theme_minimal() +
+    labs(
+      title = paste("Impact Analysis:", theme_name),
+      subtitle = paste0("Immediate Effect: ", 
+                       round(impact_data$pct_immediate_change, 1), 
+                       "%, Trend Change: ",
+                       round(impact_data$pct_trend_change, 1), "%"),
+      x = "Date",
+      y = "Search Interest"
+    )
+}
+
+# Generate plots for each theme
+impact_plots <- theme_impacts %>%
+  mutate(
+    plots = map2(impact_analysis, theme, create_impact_plot)
+  )
+
+# Display plots
+walk(impact_plots$plots, print)
+
+```
+
+
+## Interpretation of Lockdown Impact Analysis
+
+```{r prepare_summary, echo=FALSE}
+# Helper functions
+format_pct <- function(x) sprintf("%.1f%%", x)
+format_pct_with_sign <- function(x) sprintf("%+.1f%%", x)
+
+# Get top increases
+top_increases <- impact_summary_table %>%
+  filter(p_immediate < 0.05) %>%
+  arrange(desc(immediate_effect))
+
+# Get significant trend changes
+sig_trends <- impact_summary_table %>%
+  filter(p_trend < 0.05) %>%
+  arrange(trend_change)
+
+# Get highest R²
+best_fit <- impact_summary_table %>%
+  ungroup() %>% 
+  dplyr::slice_max(model_r2, n = 1)
+```
+
+The implementation of COVID-19 measures in March 2020 had varying effects across different search themes:
+
+### Immediate Effects
+1. **Strongest Responses** (>200% increase):
+   - `r top_increases$theme[1]` showed the most dramatic surge (`r format_pct(top_increases$immediate_effect[1])`)
+   - `r top_increases$theme[2]` (`r format_pct(top_increases$immediate_effect[2])`) and `r top_increases$theme[3]` (`r format_pct(top_increases$immediate_effect[3])`) searches also increased substantially
+   - `r top_increases$theme[4]`-related searches rose significantly (`r format_pct(top_increases$immediate_effect[4])`)
+
+2. **Moderate Responses**:
+
+```{r moderate_responses, echo=FALSE, results='asis'}
+top_increases %>%
+  filter(immediate_effect < 200) %>%
+  mutate(text = sprintf("- %s searches %s", 
+                        theme, 
+                        format_pct_with_sign(immediate_effect))) %>%
+  pull(text) %>%
+  cat(sep = "\n")
+```
+
+3. **No Significant Impact**:
+```{r non_significant, echo=FALSE, results='asis'}
+impact_summary_table %>%
+  filter(p_immediate >= 0.05) %>%
+  mutate(text = sprintf("- %s searches showed no significant immediate change (%s)", 
+                        theme, 
+                        format_pct_with_sign(immediate_effect))) %>%
+  pull(text) %>%
+  cat(sep = "\n")
+```
+
+### Trend Changes
+**Significant Declining Trends**:
+
+```{r significant_trends, echo=FALSE, results='asis'}
+sig_trends %>%
+  mutate(text = sprintf("- %s showed %s monthly decline", 
+                        theme, 
+                        format_pct_with_sign(trend_change))) %>%
+  pull(text) %>%
+  cat(sep = "\n")
+```
+- Most other themes showed non-significant trend changes
+- Only Vaccination showed a positive trend (`r format_pct_with_sign(impact_summary_table$trend_change[impact_summary_table$theme == "Vaccination"])`, though not significant)
+
+### Model Reliability
+- All models show strong fit (R² > `r format(min(impact_summary_table$model_r2), digits=2)`)
+- `r best_fit$theme` model shows highest explanatory power (R² = `r format(best_fit$model_r2, digits=3)`)
+- `r paste(impact_summary_table %>% ungroup() %>% dplyr::slice_max(model_r2, n = 3) %>% slice(-1) %>% select(theme) %>% pull, collapse=" and ")` models also show very good fit (R² > `r format(sort(impact_summary_table$model_r2, decreasing = TRUE)[3], digits=3)`)
+
+This pattern suggests an initial surge of public interest in government measures and practical information, followed by a gradual decline in attention, possibly indicating public adaptation to the new situation.
